@@ -468,7 +468,7 @@ func CollectServiceReachability(ctx context.Context, client *http.Client, f *Fac
 	ch := make(chan result, 3)
 
 	go func() {
-		code := httpStatusCode(ctx, client, "https://api.anthropic.com/v1/messages")
+		code := httpMessagesStatusCode(ctx, client, "https://api.anthropic.com/v1/messages")
 		ch <- result{"api", code}
 	}()
 	go func() {
@@ -669,6 +669,28 @@ func httpGet(ctx context.Context, client *http.Client, url string) string {
 		return ""
 	}
 	return string(body)
+}
+
+// Messages accepts POST. An unauthenticated request should return 401, whereas
+// GET can return 405 even when the API is reachable. Never attach credentials.
+func httpMessagesStatusCode(ctx context.Context, client *http.Client, url string) int {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
+	if err != nil {
+		return 0
+	}
+	req.Header.Set("User-Agent", "CheckClaude/1.0")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0
+	}
+	resp.Body.Close()
+	return resp.StatusCode
 }
 
 func httpStatusCode(ctx context.Context, client *http.Client, url string) int {
